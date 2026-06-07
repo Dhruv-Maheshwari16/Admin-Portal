@@ -1,4 +1,3 @@
-import React from 'react';
 import { 
   Palette, Bell, HelpCircle, Mail, FileText, Shield, Wallet, LogOut, ChevronRight 
 } from 'lucide-react';

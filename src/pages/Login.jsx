@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { Mail, Activity } from 'lucide-react';
+import { useState } from 'react';
+import { Mail } from 'lucide-react';
 import HyperIcon from '../components/HyperIcon';
 
 export default function Login({ onEmailSubmit }) {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!email) {
       setError('Email address is required');
@@ -18,7 +19,14 @@ export default function Login({ onEmailSubmit }) {
       return;
     }
     setError('');
-    onEmailSubmit(email);
+    setLoading(true);
+    try {
+      await onEmailSubmit(email);
+    } catch (err) {
+      setError(err.message || 'Failed to send OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -65,22 +73,20 @@ export default function Login({ onEmailSubmit }) {
 
           <button
             type="submit"
-            className="w-full bg-brand-gold hover:bg-brand-gold-hover text-black py-3.5 rounded-xl font-bold uppercase tracking-wider text-sm transition shadow-md shadow-brand-gold/10 hover:shadow-brand-gold/20"
+            disabled={loading}
+            className="w-full bg-brand-gold hover:bg-brand-gold-hover disabled:opacity-60 disabled:cursor-not-allowed text-black py-3.5 rounded-xl font-bold uppercase tracking-wider text-sm transition shadow-md shadow-brand-gold/10 hover:shadow-brand-gold/20"
           >
-            Continue
+            {loading ? 'Sending...' : 'Continue'}
           </button>
         </form>
 
         {/* Help/Hint box */}
         <div className="p-4 bg-zinc-900/50 border border-zinc-850 rounded-xl text-center">
           <p className="text-[10px] font-bold text-brand-gold uppercase tracking-wider mb-1">
-            Sandbox Test Credentials
+            Backend Configuration
           </p>
           <p className="text-[11px] text-zinc-400 font-semibold">
-            Test OTP: <span className="text-white font-bold">000000</span>
-          </p>
-          <p className="text-[9px] text-muted-text mt-1">
-            Emails: vellore.admin@hyper.com, mumbai.admin@hyper.com
+            Uses <span className="text-white font-bold">VITE_API_BASE_URL</span>
           </p>
         </div>
       </div>

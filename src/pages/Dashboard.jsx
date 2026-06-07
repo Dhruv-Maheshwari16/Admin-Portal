@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { List, QrCode, PlusCircle, Ban, TrendingUp, DollarSign } from 'lucide-react';
+import { useState } from 'react';
+import { List, QrCode, PlusCircle, Ban } from 'lucide-react';
 import ComingSoonOverlay from '../components/ComingSoonOverlay';
 import { mockDashboardStats } from '../data/mockData';
 import HyperIcon from '../components/HyperIcon';

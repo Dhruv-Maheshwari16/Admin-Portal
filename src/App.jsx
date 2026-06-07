@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import BottomNav from './components/BottomNav';
 import DisableSlotsDrawer from './components/DisableSlotsDrawer';
 
@@ -16,12 +16,17 @@ import ManualBookingWizard from './pages/ManualBookingWizard';
 import Ledger from './pages/Ledger';
 
 // Mock Data
-import { mockVenues, mockBookings, mockDashboardStats } from './data/mockData';
+import { mockBookings, mockDashboardStats, mockVenues } from './data/mockData';
+import { adminAPI, clearToken, decodeJwt, getToken, hasApiConfig, setLogoutCallback, setToken } from './services/api';
+import { toBookingList, toDashboardStats, toVenueList } from './services/adapters';
 
 export default function App() {
+  const persistedPayload = decodeJwt(getToken() || '');
+  const hasPersistedAdmin = persistedPayload?.role === 'ROLE_ADMIN';
+
   // Authentication Routing state
-  const [authStep, setAuthStep] = useState('login'); // 'login' | 'verify' | 'app'
-  const [email, setEmail] = useState('');
+  const [authStep, setAuthStep] = useState(hasPersistedAdmin ? 'app' : 'login'); // 'login' | 'verify' | 'app'
+  const [email, setEmail] = useState(persistedPayload?.sub || '');
   
   // Navigation & Sub-views routing
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'bookings' | 'slots' | 'ledger' | 'profile'
@@ -31,25 +36,77 @@ export default function App() {
   // Global Interactive Mock States
   const [bookings, setBookings] = useState(mockBookings);
   const [dashboardStats, setDashboardStats] = useState(mockDashboardStats);
+  const [venues, setVenues] = useState(mockVenues);
   const [isDisableDrawerOpen, setIsDisableDrawerOpen] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(hasPersistedAdmin);
+  const [apiNotice, setApiNotice] = useState('');
 
-  // Authentication Callbacks
-  const handleEmailSubmit = (enteredEmail) => {
-    setEmail(enteredEmail);
-    setAuthStep('verify');
-  };
+  async function loadAppData() {
+    if (!hasApiConfig()) {
+      setApiNotice('VITE_API_BASE_URL is not configured. Showing mock data.');
+      return;
+    }
 
-  const handleVerifySuccess = () => {
-    setAuthStep('app');
-  };
+    try {
+      const [servicesResponse, bookingsResponse, statsResponse] = await Promise.all([
+        adminAPI.getServices(0, 50),
+        adminAPI.getAdminBookings(0, 100),
+        adminAPI.getAnalyticsSummary(),
+      ]);
 
-  const handleLogout = () => {
+      const nextBookings = toBookingList(bookingsResponse);
+      setVenues(toVenueList(servicesResponse));
+      setBookings(nextBookings);
+      setDashboardStats(toDashboardStats(statsResponse, nextBookings));
+      setApiNotice('');
+    } catch (err) {
+      setApiNotice(err.message || 'Unable to load live data. Showing mock data.');
+    }
+  }
+
+  function handleLogout() {
+    clearToken();
     setEmail('');
     setAuthStep('login');
     setActiveTab('dashboard');
     setSelectedVenue(null);
     setActiveView('default');
+  }
+
+  useEffect(() => {
+    setLogoutCallback(handleLogout);
+
+    if (hasPersistedAdmin) {
+      Promise.resolve()
+        .then(loadAppData)
+        .finally(() => setIsBootstrapping(false));
+    }
+  }, [hasPersistedAdmin]);
+
+  // Authentication Callbacks
+  const handleEmailSubmit = async (enteredEmail) => {
+    if (!hasApiConfig()) {
+      throw new Error('Set VITE_API_BASE_URL in .env to use HyperChief APIs.');
+    }
+
+    await adminAPI.requestEmailOtp(enteredEmail);
+    setEmail(enteredEmail);
+    setAuthStep('verify');
   };
+
+  const handleVerifySuccess = async (otp) => {
+    const { token } = await adminAPI.verifyEmailOtp(email, otp);
+    const payload = decodeJwt(token);
+    if (!payload || payload.role !== 'ROLE_ADMIN') {
+      throw new Error('Access denied. Admin role required.');
+    }
+
+    setToken(token);
+    setAuthStep('app');
+    await loadAppData();
+  };
+
+  const handleResendOtp = (targetEmail) => adminAPI.requestEmailOtp(targetEmail);
 
   // Add booking from manual wizard
   const handleAddBooking = (newBooking) => {
@@ -83,8 +140,24 @@ export default function App() {
   };
 
   // Handle slot disable submit
-  const handleDisableSlots = (data) => {
-    alert(`Success: Disabled slots for ${data.service} on date ${data.startDate} (${data.reason})`);
+  const handleDisableSlots = async (data) => {
+    if (!hasApiConfig()) {
+      alert(`Success: Disabled slots for ${data.service} on date ${data.startDate} (${data.reason})`);
+      return;
+    }
+
+    try {
+      await adminAPI.disableSlots({
+        serviceId: data.serviceId,
+        date: data.startDate,
+        startDate: data.startDate,
+        endDate: data.durationMode === 'range' ? data.endDate : data.startDate,
+        reason: data.reason,
+      });
+      alert(`Success: Disabled slots for ${data.service} on date ${data.startDate} (${data.reason})`);
+    } catch (err) {
+      alert(err.message || 'Failed to disable slots.');
+    }
   };
 
   // Dashboard quick action trigger router
@@ -104,14 +177,15 @@ export default function App() {
   const renderAppContent = () => {
     // 1. Check if we are inside a sub-page view
     if (activeView === 'disabled_slots') {
-      return <DisabledSlots onBack={() => setActiveView('default')} />;
+      return <DisabledSlots onBack={() => setActiveView('default')} service={selectedVenue || venues[0]} />;
     }
     if (activeView === 'manual_booking') {
       return (
-        <ManualBookingWizard 
-          onBack={() => setActiveView('default')} 
-          onBookingCreated={handleAddBooking} 
-        />
+          <ManualBookingWizard 
+            onBack={() => setActiveView('default')} 
+            onBookingCreated={handleAddBooking} 
+            service={selectedVenue || venues[0]}
+          />
       );
     }
     if (activeView === 'history') {
@@ -150,6 +224,7 @@ export default function App() {
         return (
           <Services 
             onManageVenue={(venue) => setSelectedVenue(venue)} 
+            venuesList={venues}
           />
         );
       case 'ledger':
@@ -160,6 +235,14 @@ export default function App() {
         return <Dashboard onQuickAction={handleDashboardQuickAction} stats={dashboardStats} />;
     }
   };
+
+  if (isBootstrapping) {
+    return (
+      <div className="min-h-screen bg-dark-bg text-white flex items-center justify-center">
+        <p className="text-xs font-bold uppercase tracking-wider text-brand-gold">Loading HyperChief...</p>
+      </div>
+    );
+  }
 
   // Auth Guard Routing
   if (authStep === 'login') {
@@ -172,6 +255,7 @@ export default function App() {
         email={email} 
         onBack={() => setAuthStep('login')} 
         onVerifySuccess={handleVerifySuccess} 
+        onResendOtp={handleResendOtp}
       />
     );
   }
@@ -190,6 +274,11 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto">
+        {apiNotice && (
+          <div className="sticky top-0 z-40 bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-yellow-300">
+            {apiNotice}
+          </div>
+        )}
         {renderAppContent()}
       </div>
 

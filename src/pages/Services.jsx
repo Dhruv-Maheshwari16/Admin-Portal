@@ -1,5 +1,4 @@
-import React from 'react';
-import { MapPin, Building2, ChevronRight } from 'lucide-react';
+import { MapPin, ChevronRight } from 'lucide-react';
 import { mockVenues } from '../data/mockData';
 
 export default function Services({ 

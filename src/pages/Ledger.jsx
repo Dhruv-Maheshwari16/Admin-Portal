@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
-import { Download, Landmark, ArrowUpRight, ArrowDownRight, FileText } from 'lucide-react';
-import { mockBookings } from '../data/mockData';
+import { useState } from 'react';
+import { Download, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 
 export default function Ledger() {
   const [filter, setFilter] = useState('ALL'); // 'ALL', 'INFLOW', 'OUTFLOW'

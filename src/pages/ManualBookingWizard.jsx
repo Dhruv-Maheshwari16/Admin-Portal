@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Layers, ChevronRight, Calendar, Clock, CreditCard, User, Phone, CheckCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Layers, ChevronRight, User, Phone } from 'lucide-react';
 import { mockResources, getSlotsForResource } from '../data/mockData';
+import { adminAPI, hasApiConfig } from '../services/api';
+import { toBookingList, toResourceList, toSlotList } from '../services/adapters';
 
-export default function ManualBookingWizard({ onBack, onBookingCreated }) {
+const parseSlotTimes = (slot) => {
+  if (slot.startTime && slot.endTime) {
+    return { startTime: slot.startTime, endTime: slot.endTime };
+  }
+
+  const [startTime = '', endTime = ''] = String(slot.time || '').split(' - ');
+  return { startTime, endTime };
+};
+
+export default function ManualBookingWizard({ onBack, onBookingCreated, service }) {
   const [step, setStep] = useState(1); // 1: Resource, 2: Slot, 3: Confirm Form
   const [selectedResource, setSelectedResource] = useState(null);
   const [selectedDate, setSelectedDate] = useState('2026-06-07');
@@ -10,6 +21,53 @@ export default function ManualBookingWizard({ onBack, onBookingCreated }) {
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [paymentMode, setPaymentMode] = useState('ONLINE');
+  const [resources, setResources] = useState(mockResources);
+  const [slots, setSlots] = useState([]);
+  const [loadingResources, setLoadingResources] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const loadResources = async () => {
+      if (!hasApiConfig() || !service?.id) return;
+
+      setLoadingResources(true);
+      setError('');
+      try {
+        setResources(toResourceList(await adminAPI.getResources(service.id)));
+      } catch (err) {
+        setError(err.message || 'Failed to load resources.');
+      } finally {
+        setLoadingResources(false);
+      }
+    };
+
+    loadResources();
+  }, [service?.id]);
+
+  useEffect(() => {
+    const loadSlots = async () => {
+      if (!selectedResource) return;
+
+      if (!hasApiConfig()) {
+        setSlots(getSlotsForResource(selectedResource.id));
+        return;
+      }
+
+      setLoadingSlots(true);
+      setError('');
+      try {
+        setSlots(toSlotList(await adminAPI.getResourceSlots(selectedResource.id, selectedDate), selectedResource.price));
+      } catch (err) {
+        setError(err.message || 'Failed to load slots.');
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    loadSlots();
+  }, [selectedResource, selectedDate]);
 
   const dates = [
     { day: 'SUN', num: '07', fullDate: '2026-06-07' },
@@ -32,25 +90,52 @@ export default function ManualBookingWizard({ onBack, onBookingCreated }) {
   };
 
   // Form submit handler
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!customerName) return;
 
-    const newBooking = {
-      id: Math.random().toString(36).substr(2, 4).toUpperCase(),
-      customerName: customerName.toUpperCase(),
-      phone: phone || "+919876543210",
-      date: selectedDate,
-      timeSlot: selectedSlot.time,
-      resourceType: selectedResource.name,
-      price: `INR ${selectedResource.price}`,
-      paymentMode: paymentMode,
-      status: "CONFIRMED",
-      timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) + `, ` + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
-    };
+    setSubmitting(true);
+    setError('');
+    try {
+      let newBooking;
 
-    if (onBookingCreated) {
-      onBookingCreated(newBooking);
+      if (hasApiConfig() && service?.id && selectedResource?.id) {
+        const { startTime, endTime } = parseSlotTimes(selectedSlot);
+        const response = await adminAPI.manualBooking({
+          serviceId: Number(service.id),
+          resourceId: Number(selectedResource.id),
+          activityCode: selectedResource.activityCode || selectedResource.name,
+          bookingDate: selectedDate,
+          startTime,
+          endTime,
+          amount: Number(selectedSlot.price || selectedResource.price || 0),
+          onlineAmountPaid: paymentMode === 'ONLINE' ? Number(selectedSlot.price || selectedResource.price || 0) : 0,
+          venueAmountCollected: paymentMode === 'OFFLINE' ? Number(selectedSlot.price || selectedResource.price || 0) : 0,
+          remarks: `Manual booking for ${customerName}${phone ? ` (${phone})` : ''}`,
+        });
+        newBooking = toBookingList([response])[0];
+      } else {
+        newBooking = {
+          id: Math.random().toString(36).substr(2, 4).toUpperCase(),
+          customerName: customerName.toUpperCase(),
+          phone: phone || "+919876543210",
+          date: selectedDate,
+          timeSlot: selectedSlot.time,
+          resourceType: selectedResource.name,
+          price: `INR ${selectedResource.price}`,
+          paymentMode: paymentMode,
+          status: "CONFIRMED",
+          timestamp: new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit' }) + `, ` + new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+        };
+      }
+
+      if (onBookingCreated) {
+        onBookingCreated(newBooking);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to create manual booking.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -82,7 +167,10 @@ export default function ManualBookingWizard({ onBack, onBookingCreated }) {
         {/* STEP 1: SELECT RESOURCE */}
         {step === 1 && (
           <section className="space-y-3 pt-2">
-            {mockResources.map((res) => (
+            {loadingResources && (
+              <p className="text-xs text-muted-text p-4">Loading resources...</p>
+            )}
+            {!loadingResources && resources.map((res) => (
               <button
                 key={res.id}
                 onClick={() => handleResourceSelect(res)}
@@ -145,10 +233,14 @@ export default function ManualBookingWizard({ onBack, onBookingCreated }) {
               </label>
               
               <div className="grid grid-cols-3 gap-2">
-                {getSlotsForResource(selectedResource?.id).map((slot) => (
+                {loadingSlots && (
+                  <p className="col-span-3 text-xs text-muted-text p-4">Loading slots...</p>
+                )}
+                {!loadingSlots && slots.map((slot) => (
                   <button
                     key={slot.id}
                     onClick={() => handleSlotSelect(slot)}
+                    disabled={slot.disabled}
                     className="p-3 bg-zinc-900/40 border border-zinc-850 rounded-xl hover:border-brand-gold/45 hover:bg-zinc-900/80 text-center transition flex flex-col items-center justify-center"
                   >
                     <span className="text-[9px] font-extrabold text-white leading-relaxed">{slot.time}</span>
@@ -168,6 +260,9 @@ export default function ManualBookingWizard({ onBack, onBookingCreated }) {
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <p className="text-xs text-red-500 font-semibold">{error}</p>
+              )}
               {/* Customer Name Input */}
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-muted-text uppercase tracking-wider block">
@@ -261,9 +356,10 @@ export default function ManualBookingWizard({ onBack, onBookingCreated }) {
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full bg-brand-gold hover:bg-brand-gold-hover text-black py-3.5 rounded-xl font-bold uppercase tracking-wider text-sm transition shadow-md shadow-brand-gold/10 hover:shadow-brand-gold/20"
+                disabled={submitting}
+                className="w-full bg-brand-gold hover:bg-brand-gold-hover disabled:opacity-60 disabled:cursor-not-allowed text-black py-3.5 rounded-xl font-bold uppercase tracking-wider text-sm transition shadow-md shadow-brand-gold/10 hover:shadow-brand-gold/20"
               >
-                Confirm Booking
+                {submitting ? 'Creating...' : 'Confirm Booking'}
               </button>
             </form>
           </section>

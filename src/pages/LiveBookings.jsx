@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { History, Calendar, Clock, MapPin, CreditCard, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { History, Calendar, Clock, MapPin, CreditCard } from 'lucide-react';
 import { mockBookings } from '../data/mockData';
 
 export default function LiveBookings({ 

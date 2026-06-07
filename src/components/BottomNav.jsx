@@ -1,4 +1,3 @@
-import React from 'react';
 import { Home, Calendar, Clock, ClipboardList, User } from 'lucide-react';
 import HyperIcon from './HyperIcon';
 

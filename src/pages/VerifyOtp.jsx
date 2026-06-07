@@ -1,22 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
-export default function VerifyOtp({ email, onBack, onVerifySuccess }) {
+export default function VerifyOtp({ email, onBack, onVerifySuccess, onResendOtp }) {
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
-  const inputRefs = [
-    useRef(null),
-    useRef(null),
-    useRef(null),
-    useRef(null),
-    useRef(null),
-    useRef(null),
-  ];
+  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const inputRefs = useRef([]);
 
   // Auto-focus on the first field
   useEffect(() => {
-    if (inputRefs[0].current) {
-      inputRefs[0].current.focus();
+    if (inputRefs.current[0]) {
+      inputRefs.current[0].focus();
     }
   }, []);
 
@@ -30,18 +25,18 @@ export default function VerifyOtp({ email, onBack, onVerifySuccess }) {
 
     // Auto-focus next input if we entered a digit
     if (value && index < 5) {
-      inputRefs[index + 1].current.focus();
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (index, e) => {
     // Handle backspace back-focus
     if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
-      inputRefs[index - 1].current.focus();
+      inputRefs.current[index - 1]?.focus();
     }
   };
 
-  const handleVerify = (e) => {
+  const handleVerify = async (e) => {
     e.preventDefault();
     const otpString = otpDigits.join('');
     if (otpString.length < 6) {
@@ -49,11 +44,28 @@ export default function VerifyOtp({ email, onBack, onVerifySuccess }) {
       return;
     }
 
-    if (otpString === '000000') {
+    setLoading(true);
+    try {
+      await onVerifySuccess(otpString);
       setError('');
-      onVerifySuccess();
-    } else {
-      setError('Invalid OTP code. Please enter 000000 for sandbox access.');
+    } catch (err) {
+      setError(err.message || 'Invalid OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!onResendOtp) return;
+
+    setResending(true);
+    setError('');
+    try {
+      await onResendOtp(email);
+    } catch (err) {
+      setError(err.message || 'Failed to resend OTP. Please try again.');
+    } finally {
+      setResending(false);
     }
   };
 
@@ -86,7 +98,9 @@ export default function VerifyOtp({ email, onBack, onVerifySuccess }) {
               {otpDigits.map((digit, idx) => (
                 <input
                   key={idx}
-                  ref={inputRefs[idx]}
+                  ref={(input) => {
+                    inputRefs.current[idx] = input;
+                  }}
                   type="text"
                   pattern="[0-9]*"
                   inputMode="numeric"
@@ -106,9 +120,10 @@ export default function VerifyOtp({ email, onBack, onVerifySuccess }) {
 
           <button
             type="submit"
-            className="w-full bg-brand-gold hover:bg-brand-gold-hover text-black py-3.5 rounded-xl font-bold uppercase tracking-wider text-sm transition shadow-md shadow-brand-gold/10 hover:shadow-brand-gold/20"
+            disabled={loading}
+            className="w-full bg-brand-gold hover:bg-brand-gold-hover disabled:opacity-60 disabled:cursor-not-allowed text-black py-3.5 rounded-xl font-bold uppercase tracking-wider text-sm transition shadow-md shadow-brand-gold/10 hover:shadow-brand-gold/20"
           >
-            Verify & Login
+            {loading ? 'Verifying...' : 'Verify & Login'}
           </button>
         </form>
 
@@ -116,9 +131,11 @@ export default function VerifyOtp({ email, onBack, onVerifySuccess }) {
         <div className="text-center">
           <button 
             type="button"
+            onClick={handleResend}
+            disabled={resending}
             className="text-xs font-semibold text-zinc-400 hover:text-white transition"
           >
-            Didn't receive the code? <span className="text-brand-gold hover:underline ml-1">Resend OTP</span>
+            Didn't receive the code? <span className="text-brand-gold hover:underline ml-1">{resending ? 'Sending...' : 'Resend OTP'}</span>
           </button>
         </div>
       </div>

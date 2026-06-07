@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { 
   ArrowLeft, Plus, Ban, QrCode, Power, Calendar, Clock, MapPin, 
-  CreditCard, Wallet, HelpCircle, Mail, Phone, Info, Check, AlertCircle 
+  CreditCard, Wallet, Mail, Info
 } from 'lucide-react';
 import { mockBookings, mockResources, getSlotsForResource } from '../data/mockData';
 
@@ -30,7 +30,7 @@ export default function VenueDetail({
     'tt2': ['s13'] // s13 is blocked
   });
 
-  const [bookedSlots, setBookedSlots] = useState({
+  const [bookedSlots] = useState({
     'turf': ['s1', 's11', 's12'],
     'ps5': ['s1', 's2'],
     'tt1': ['s1', 's2'],

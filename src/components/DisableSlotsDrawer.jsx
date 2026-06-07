@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Calendar, Building2, Check } from 'lucide-react';
 
 export default function DisableSlotsDrawer({ isOpen, onClose, onDisable, selectedService }) {
@@ -7,6 +7,8 @@ export default function DisableSlotsDrawer({ isOpen, onClose, onDisable, selecte
   const [selectedReason, setSelectedReason] = useState('MAINTENANCE');
   const [customReason, setCustomReason] = useState('MAINTENANCE');
   const [startDate, setStartDate] = useState('2026-06-07');
+  const [endDate, setEndDate] = useState('2026-06-07');
+  const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -24,16 +26,20 @@ export default function DisableSlotsDrawer({ isOpen, onClose, onDisable, selecte
     setCustomReason(reason);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (onDisable) {
-      onDisable({
+      setSubmitting(true);
+      await onDisable({
+        serviceId: selectedService?.id,
         service: selectedService?.name || "The House of Pool",
         durationMode,
         startDate,
+        endDate,
         entireDay,
         reason: customReason,
       });
+      setSubmitting(false);
     }
     onClose();
   };
@@ -128,6 +134,27 @@ export default function DisableSlotsDrawer({ isOpen, onClose, onDisable, selecte
                 style={{ right: '2.5rem' }}
               />
             </div>
+
+            {durationMode === 'range' && (
+              <div className="p-4 bg-zinc-900/50 border border-zinc-800 rounded-xl flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Calendar className="w-5 h-5 text-zinc-500" />
+                  <div>
+                    <p className="text-[10px] font-bold text-muted-text uppercase tracking-wider">End Date</p>
+                    <p className="text-sm font-semibold text-white mt-0.5">
+                      {endDate === '2026-06-07' ? 'JUN 07, 2026' : endDate}
+                    </p>
+                  </div>
+                </div>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="opacity-0 absolute w-8 h-8 cursor-pointer"
+                  style={{ right: '2.5rem' }}
+                />
+              </div>
+            )}
           </div>
 
           {/* 4. TIME RANGE */}
@@ -196,10 +223,11 @@ export default function DisableSlotsDrawer({ isOpen, onClose, onDisable, selecte
             </button>
             <button
               type="submit"
-              className="flex-1 py-3 bg-red-650 hover:bg-red-700 text-white rounded-full text-xs font-bold uppercase tracking-wider shadow-lg shadow-red-900/20"
+              disabled={submitting}
+              className="flex-1 py-3 bg-red-650 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-full text-xs font-bold uppercase tracking-wider shadow-lg shadow-red-900/20"
               style={{ backgroundColor: '#dc2626' }}
             >
-              Disable Slots
+              {submitting ? 'Disabling...' : 'Disable Slots'}
             </button>
           </div>
         </form>

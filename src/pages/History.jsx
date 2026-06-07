@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, Search, Download, Calendar, Clock, MapPin, CreditCard, SlidersHorizontal } from 'lucide-react';
 import { mockBookings } from '../data/mockData';
 

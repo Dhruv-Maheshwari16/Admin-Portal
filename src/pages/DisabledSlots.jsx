@@ -1,20 +1,47 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, Calendar, Building2, Trash2 } from 'lucide-react';
 import { mockVenues } from '../data/mockData';
+import { adminAPI, hasApiConfig } from '../services/api';
+import { toDisabledSlots } from '../services/adapters';
 
-export default function DisabledSlots({ onBack }) {
+export default function DisabledSlots({ onBack, service = mockVenues[0] }) {
   const [selectedDate, setSelectedDate] = useState('');
   const [disabledList, setDisabledList] = useState([
     { id: 'db1', time: '10:00 AM - 11:00 AM', resource: 'TURF', reason: 'MAINTENANCE', date: '2026-06-07' },
     { id: 'db2', time: '6:00 PM - 7:00 PM', resource: 'TT TABLE 2', reason: 'STAFF SHORTAGE', date: '2026-06-07' }
   ]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleDelete = (id) => {
-    setDisabledList(disabledList.filter(item => item.id !== id));
+  const handleDelete = async (id) => {
+    if (!hasApiConfig()) {
+      setDisabledList(disabledList.filter(item => item.id !== id));
+      return;
+    }
+
+    try {
+      await adminAPI.deleteDisabledSlots([id]);
+      setDisabledList(disabledList.filter(item => item.id !== id));
+    } catch (err) {
+      setError(err.message || 'Failed to delete disabled slot.');
+    }
   };
 
-  const handlePickDate = () => {
-    setSelectedDate('2026-06-07'); // Sandbox date
+  const handlePickDate = async () => {
+    const date = '2026-06-07';
+    setSelectedDate(date);
+    setError('');
+
+    if (!hasApiConfig() || !service?.id) return;
+
+    setLoading(true);
+    try {
+      setDisabledList(toDisabledSlots(await adminAPI.getServiceDisabledSlots(service.id, date)));
+    } catch (err) {
+      setError(err.message || 'Failed to load disabled slots.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filtered = disabledList.filter(item => item.date === selectedDate);
@@ -47,7 +74,7 @@ export default function DisabledSlots({ onBack }) {
               <Building2 className="w-4.5 h-4.5" />
             </div>
             <span className="text-xs font-bold text-white uppercase tracking-wider">
-              {mockVenues[0].name}
+              {service.name}
             </span>
           </div>
         </div>
@@ -88,9 +115,14 @@ export default function DisabledSlots({ onBack }) {
             </div>
 
             {filtered.length === 0 ? (
-              <p className="text-center py-8 text-xs text-zinc-500">No blocked slots for this date.</p>
+              <p className="text-center py-8 text-xs text-zinc-500">
+                {error || (loading ? 'Loading blocked slots...' : 'No blocked slots for this date.')}
+              </p>
             ) : (
               <div className="space-y-3">
+                {error && (
+                  <p className="text-xs text-red-500 font-semibold">{error}</p>
+                )}
                 {filtered.map(item => (
                   <div 
                     key={item.id}
